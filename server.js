@@ -1,220 +1,108 @@
-// ====== CẤU HÌNH ======
-const API_BASE = window.location.origin; // ví dụ http://localhost:3000
-let currentUser = null;
-let gameState = null;
-let authToken = null;
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const cors = require('cors');
 
-// ====== ĐĂNG NHẬP GOOGLE ======
-function handleGoogleLogin(response) {
-  // Gửi credential lên server xác thực
-  fetch(`${API_BASE}/api/auth/google`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential: response.credential })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      authToken = data.token;
-      currentUser = data.user;
-      gameState = data.gameState;
-      localStorage.setItem('petgame_token', authToken);
-      showGame();
-    } else {
-      showToast('❌ Đăng nhập thất bại');
-    }
-  })
-  .catch(err => {
-    console.error(err);
-    showToast('❌ Lỗi kết nối server');
-  });
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(__dirname));
+
+const DB_FILE = path.join(__dirname, 'database.json');
+
+// Khởi tạo database nếu chưa có
+function loadDB() {
+  if (!fs.existsSync(DB_FILE)) {
+    const init = { users: {}, adminKeys: {}, wallet: {} };
+    fs.writeFileSync(DB_FILE, JSON.stringify(init, null, 2));
+    return init;
+  }
+  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+}
+function saveDB(db) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-// Tự động đăng nhập nếu có token
-window.addEventListener('DOMContentLoaded', () => {
-  const savedToken = localStorage.getItem('petgame_token');
-  if (savedToken) {
-    fetch(`${API_BASE}/api/me`, {
-      headers: { 'Authorization': `Bearer ${savedToken}` }
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        authToken = savedToken;
-        currentUser = data.user;
-        gameState = data.gameState;
-        showGame();
-      } else {
-        localStorage.removeItem('petgame_token');
-      }
-    })
-    .catch(() => {});
-  }
+// ===== API TÀI KHOẢN =====
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.json({ ok: false, msg: 'Thiếu thông tin' });
+  const db = loadDB();
+  if (db.users[username]) return res.json({ ok: false, msg: 'Tên đã tồn tại!' });
+  db.users[username] = { password, coins: 0, happy: 0, pets: [] };
+  saveDB(db);
+  res.json({ ok: true, msg: 'Tạo tài khoản thành công!' });
 });
 
-function showGame() {
-  document.getElementById('loginScreen').classList.remove('active');
-  document.getElementById('gameScreen').classList.add('active');
-  document.getElementById('userName').textContent = currentUser.name;
-  document.getElementById('userAvatar').src = currentUser.picture || '';
-  render();
-}
-
-document.getElementById('logoutBtn').addEventListener('click', () => {
-  localStorage.removeItem('petgame_token');
-  location.reload();
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const db = loadDB();
+  const u = db.users[username];
+  if (!u || u.password !== password) return res.json({ ok: false, msg: 'Sai tên hoặc mật khẩu!' });
+  res.json({ ok: true, user: { username, coins: u.coins, happy: u.happy, pets: u.pets } });
 });
 
-// ====== RENDER ======
-const PET_TYPES = [
-  { emoji: '🐶', name: 'Cún con' },
-  { emoji: '🐱', name: 'Mèo con' },
-  { emoji: '🐰', name: 'Thỏ con' },
-  { emoji: '🐹', name: 'Hamster' },
-  { emoji: '🐼', name: 'Gấu trúc' },
-  { emoji: '🦊', name: 'Cáo con' },
-  { emoji: '🐨', name: 'Koala' },
-  { emoji: '🐧', name: 'Cánh cụt' }
-];
+// Lưu tiến trình
+app.post('/api/save', (req, res) => {
+  const { username, coins, happy, pets } = req.body;
+  const db = loadDB();
+  if (!db.users[username]) return res.json({ ok: false });
+  db.users[username].coins = coins;
+  db.users[username].happy = happy;
+  db.users[username].pets = pets;
+  saveDB(db);
+  res.json({ ok: true });
+});
 
-function render() {
-  if (!gameState) return;
+// ===== API ADMIN KEY =====
+app.post('/api/admin/create', (req, res) => {
+  const { key, duration } = req.body; // duration: ms
+  const db = loadDB();
+  const expire = duration > 0 ? Date.now() + duration : null;
+  db.adminKeys[key] = { expire, createdAt: Date.now() };
+  saveDB(db);
+  res.json({ ok: true });
+});
 
-  // Resources
-  document.getElementById('coinDisplay').textContent = Math.floor(gameState.coins);
-  document.getElementById('multiplierDisplay').textContent = `x${gameState.coinMultiplier}`;
+app.post('/api/admin/delete', (req, res) => {
+  const { key } = req.body;
+  const db = loadDB();
+  delete db.adminKeys[key];
+  saveDB(db);
+  res.json({ ok: true });
+});
 
-  // Pets
-  const petContainer = document.getElementById('petContainer');
-  petContainer.innerHTML = '';
-  if (gameState.pets.length === 0) {
-    petContainer.innerHTML = '<p style="color:#999;grid-column:1/-1;text-align:center">Chưa có thú cưng nào. Nhấn "Nhận thú cưng mới" để bắt đầu! 🐾</p>';
-  }
-  gameState.pets.forEach((pet, idx) => {
-    const card = document.createElement('div');
-    card.className = 'pet-card';
-    const joyPercent = Math.min(100, pet.joy);
-    card.innerHTML = `
-      <div class="pet-emoji">${pet.emoji}</div>
-      <div class="pet-name">${pet.name}</div>
-      <div class="joy-bar-wrap">
-        <div class="joy-bar" style="width:${joyPercent}%"></div>
-        <div class="joy-text">${Math.floor(pet.joy)} / 100 vui vẻ</div>
-      </div>
-      <button class="btn-feed" onclick="feedPet(${idx})">🍖 Cho ăn (+5 vui vẻ)</button>
-    `;
-    petContainer.appendChild(card);
-  });
+app.get('/api/admin/list', (req, res) => {
+  const db = loadDB();
+  const now = Date.now();
+  const list = Object.entries(db.adminKeys).map(([k, v]) => ({
+    key: k,
+    expire: v.expire,
+    valid: !v.expire || v.expire > now
+  }));
+  res.json({ ok: true, list });
+});
 
-  // Rooms
-  ['bathroom','dining','playroom','stressroom','garden'].forEach(room => {
-    const card = document.querySelector(`[data-room="${room}"]`);
-    if (!card) return;
-    const unlocked = gameState.rooms.includes(room);
-    card.classList.toggle('locked', !unlocked);
-    card.classList.toggle('unlocked', unlocked);
-    const btn = card.querySelector('.btn-room');
-    if (unlocked) {
-      btn.textContent = 'Sử dụng';
-      btn.setAttribute('onclick', `useRoom('${room}')`);
-    }
-  });
+app.post('/api/admin/check', (req, res) => {
+  const { key } = req.body;
+  const db = loadDB();
+  const k = db.adminKeys[key];
+  if (!k) return res.json({ ok: false, msg: 'Key không tồn tại' });
+  if (k.expire && k.expire < Date.now()) return res.json({ ok: false, msg: 'Key đã hết hạn' });
+  res.json({ ok: true });
+});
 
-  // Upgrade
-  document.getElementById('coinUpgradeCost').textContent = gameState.coinUpgradeCost;
-  document.getElementById('joyUpgradeCost').textContent = gameState.joyUpgradeCost;
-  document.getElementById('coinMultiplier').textContent = `x${gameState.coinMultiplier}`;
-  document.getElementById('joyMultiplier').textContent = `x${gameState.joyMultiplier}`;
-}
+// Admin nâng xu / max vui vẻ cho user
+app.post('/api/admin/give', (req, res) => {
+  const { key, username, coins, happyMax } = req.body;
+  const db = loadDB();
+  const k = db.adminKeys[key];
+  if (!k || (k.expire && k.expire < Date.now())) return res.json({ ok: false, msg: 'Key không hợp lệ' });
+  if (!db.users[username]) return res.json({ ok: false, msg: 'User không tồn tại' });
+  if (coins) db.users[username].coins += coins;
+  if (happyMax) db.users[username].happy = 999999;
+  saveDB(db);
+  res.json({ ok: true });
+});
 
-// ====== API CALLS ======
-async function apiCall(endpoint, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: { 'Authorization': `Bearer ${authToken}` }
-  };
-  if (body) {
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(body);
-  }
-  const res = await fetch(`${API_BASE}${endpoint}`, opts);
-  return res.json();
-}
-
-// ====== HÀNH ĐỘNG ======
-async function addPet() {
-  const type = PET_TYPES[Math.floor(Math.random() * PET_TYPES.length)];
-  const result = await apiCall('/api/pet/add', 'POST', { emoji: type.emoji, name: type.name });
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast(`🎉 Bạn nhận được ${type.name} ${type.emoji}!`);
-  }
-}
-
-async function feedPet(idx) {
-  const result = await apiCall('/api/pet/feed', 'POST', { index: idx });
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast('🍖 Thú cưng vui vẻ hơn!');
-  } else {
-    showToast('❌ ' + result.message);
-  }
-}
-
-async function useRoom(room) {
-  const result = await apiCall('/api/room/use', 'POST', { room });
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast(`✅ Sử dụng phòng thành công! +${result.gain} xu`);
-  } else {
-    showToast('❌ ' + result.message);
-  }
-}
-
-async function unlockRoom(room, cost) {
-  const result = await apiCall('/api/room/unlock', 'POST', { room });
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast(`🔓 Mở khóa phòng thành công!`);
-  } else {
-    showToast('❌ ' + result.message);
-  }
-}
-
-async function upgradeCoin() {
-  const result = await apiCall('/api/upgrade/coin', 'POST');
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast(`⚡ Nâng cấp xu! Hệ số hiện tại: x${gameState.coinMultiplier}`);
-  } else {
-    showToast('❌ ' + result.message);
-  }
-}
-
-async function upgradeJoy() {
-  const result = await apiCall('/api/upgrade/joy', 'POST');
-  if (result.success) {
-    gameState = result.gameState;
-    render();
-    showToast(`⚡ Nâng cấp vui vẻ! Hệ số hiện tại: x${gameState.joyMultiplier}`);
-  } else {
-    showToast('❌ ' + result.message);
-  }
-}
-
-document.getElementById('addPetBtn').addEventListener('click', addPet);
-
-// ====== TOAST ======
-let toastTimer;
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
-}
+app.listen(3000, () => console.log('Server chạy tại http://localhost:3000'));
