@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>🐾 Pet Game</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ĐĂNG NHẬP -->
+<div id="authScreen" class="screen">
+  <div class="card">
+    <h1>🐾 Pet Game</h1>
+    <input id="authUser" placeholder="Tên tài khoản">
+    <input id="authPass" type="password" placeholder="Mật khẩu">
+    <div class="row">
+      <button onclick="doLogin()">Đăng nhập</button>
+      <button onclick="doRegister()" class="secondary">Tạo tài khoản</button>
+    </div>
+    <p id="authMsg"></p>
+    <a href="admin.html" class="admin-link">🔐 Trang Admin</a>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="gameScreen" class="screen hidden">
+  <header>
+    <div>👤 <span id="playerName"></span></div>
+    <div>🪙 Xu vui vẻ: <b id="coins">0</b></div>
+    <div>😊 Vui vẻ: <b id="happy">0</b></div>
+    <button onclick="logout()" class="logout">Đăng xuất</button>
+  </header>
+
+  <div class="tabs">
+    <button onclick="openTab('pets')">🐶 Thú cưng</button>
+    <button onclick="openTab('rooms')">🏠 Phòng</button>
+    <button onclick="openTab('upgrade')">⬆️ Nâng cấp</button>
+  </div>
+
+  <!-- THÚ CƯNG -->
+  <div id="tab-pets" class="tab">
+    <h2>Chọn thú cưng</h2>
+    <div class="pets">
+      <div class="pet" onclick="adoptPet('dog','🐶')">🐶<br>Chó</div>
+      <div class="pet" onclick="adoptPet('cat','🐱')">🐱<br>Mèo</div>
+      <div class="pet" onclick="adoptPet('rabbit','🐰')">🐰<br>Thỏ</div>
+      <div class="pet" onclick="adoptPet('hamster','🐹')">🐹<br>Hamster</div>
+      <div class="pet" onclick="adoptPet('fox','🦊')">🦊<br>Cáo</div>
+      <div class="pet" onclick="adoptPet('panda','🐼')">🐼<br>Gấu trúc</div>
+    </div>
+    <h2>Thú cưng của bạn</h2>
+    <div id="myPets" class="pets"></div>
+  </div>
+
+  <!-- PHÒNG -->
+  <div id="tab-rooms" class="tab hidden">
+    <h2>Phòng của bạn</h2>
+    <div class="rooms">
+      <div class="room">🚿 Phòng tắm <span class="ok">(có sẵn)</span></div>
+      <div class="room">🍽️ Phòng ăn <span class="ok">(có sẵn)</span></div>
+      <div class="room" id="roomPlay">🎮 Phòng vui chơi <br><small>50 xu</small> <button onclick="buyRoom('play',50)">Mở</button></div>
+      <div class="room" id="roomStress">🧘 Phòng xả stress <br><small>100 xu</small> <button onclick="buyRoom('stress',100)">Mở</button></div>
+      <div class="room" id="roomGarden">🌳 Ngoài vườn <br><small>200 xu</small> <button onclick="buyRoom('garden',200)">Mở</button></div>
+    </div>
+  </div>
+
+  <!-- NÂNG CẤP -->
+  <div id="tab-upgrade" class="tab hidden">
+    <h2>Menu nâng cấp</h2>
+    <div class="upgrade">
+      <div>
+        <h3>Nâng cấp Xu (x10)</h3>
+        <p>Giá: gấp 2 lần xu hiện tại: <b id="costCoin">0</b></p>
+        <button onclick="upgrade('coin')">Nâng cấp</button>
+      </div>
+      <div>
+        <h3>Nâng cấp Vui vẻ (x10)</h3>
+        <p>Giá: gấp 2 lần xu hiện tại: <b id="costHappy">0</b></p>
+        <button onclick="upgrade('happy')">Nâng cấp</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
